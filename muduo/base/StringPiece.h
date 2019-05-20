@@ -49,6 +49,9 @@ namespace muduo
 {
 
 // For passing C-style string argument to a function.
+//
+// 简化 c-style string 作为函数参数时，要定义其重载版本
+// 仅定义 std::string 为参数的函数，当实参为 c-style string 时，有拷贝成本
 class StringArg // copyable
 {
  public:
@@ -63,13 +66,21 @@ class StringArg // copyable
   const char* c_str() const { return str_; }
 
  private:
+  // c-style string
   const char* str_;
 };
 
+// 字符串切片（传递的字符串，不要求 '\0' 终止）
+//
+// 本质上：切片自身不拥有字符串的所有权，所以它不会修改原始字符串。
+// 可以将其看作原始字符串的一个遮罩“窗口”。修改切片"窗口（开始地址/长度）"，
+// 实现对上层使用者虚拟的“添加/删除”原始字符串
+//
+// 使用者需保证：字符串切片的生命周期不得长于原始字符串的生命周期
 class StringPiece {
  private:
-  const char*   ptr_;
-  int           length_;
+  const char*   ptr_;     // 字符串开始地址（不要求 '\0' 终止）
+  int           length_;  // 字符串长度（不包含 '\0'）
 
  public:
   // We provide non-explicit singleton constructors so users can pass
@@ -93,6 +104,9 @@ class StringPiece {
   // terminated string.  Use "as_string().c_str()" if you really need to do
   // this.  Or better yet, change your routine so it does not rely on NUL
   // termination.
+  //
+  // 可以是 '\0' 终止，也可以不是。使用者不能做任何假设！
+  // 如果要获取 c-style 字符串，请使用 as_string().c_str()
   const char* data() const { return ptr_; }
   int size() const { return length_; }
   bool empty() const { return length_ == 0; }
@@ -110,13 +124,16 @@ class StringPiece {
     length_ = len;
   }
 
+  // 字符串随机访问重载
   char operator[](int i) const { return ptr_[i]; }
 
+  // “删除”指定长度前缀
   void remove_prefix(int n) {
     ptr_ += n;
     length_ -= n;
   }
 
+  // “删除”指定长度后缀
   void remove_suffix(int n) {
     length_ -= n;
   }
@@ -129,6 +146,7 @@ class StringPiece {
     return !(*this == x);
   }
 
+// 运算符重载
 #define STRINGPIECE_BINARY_PREDICATE(cmp,auxcmp)                             \
   bool operator cmp (const StringPiece& x) const {                           \
     int r = memcmp(ptr_, x.ptr_, length_ < x.length_ ? length_ : x.length_); \
@@ -140,6 +158,7 @@ class StringPiece {
   STRINGPIECE_BINARY_PREDICATE(>,  >);
 #undef STRINGPIECE_BINARY_PREDICATE
 
+  // 比较切片
   int compare(const StringPiece& x) const {
     int r = memcmp(ptr_, x.ptr_, length_ < x.length_ ? length_ : x.length_);
     if (r == 0) {
@@ -149,15 +168,17 @@ class StringPiece {
     return r;
   }
 
+  // 拷贝切片到 std::string 中，并返回
   string as_string() const {
     return string(data(), size());
   }
-
   void CopyToString(string* target) const {
     target->assign(ptr_, length_);
   }
 
   // Does "this" start with "x"
+  //
+  // 当前切片是否是指定 x 字符串的前缀
   bool starts_with(const StringPiece& x) const {
     return ((length_ >= x.length_) && (memcmp(ptr_, x.ptr_, x.length_) == 0));
   }
@@ -174,6 +195,8 @@ class StringPiece {
 
 #ifdef HAVE_TYPE_TRAITS
 // This makes vector<StringPiece> really fast for some STL implementations
+//
+// 具象化模板 __type_traits<>. 在某些 STL 容器操作中（初始化/拷贝），可能会有性能优化
 template<> struct __type_traits<muduo::StringPiece> {
   typedef __true_type    has_trivial_default_constructor;
   typedef __true_type    has_trivial_copy_constructor;

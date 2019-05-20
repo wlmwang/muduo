@@ -14,6 +14,7 @@
 namespace muduo
 {
 
+// 线程级全局单例实例。T 为用户自定义类
 template<typename T>
 class ThreadLocalSingleton : noncopyable
 {
@@ -37,15 +38,21 @@ class ThreadLocalSingleton : noncopyable
   }
 
  private:
+  // 析构用户自定义 T
   static void destructor(void* obj)
   {
+    // 必须析构当前线程的 TLS 变量
     assert(obj == t_value_);
+
+    // 是否是完全类校验
     typedef char T_must_be_complete_type[sizeof(T) == 0 ? -1 : 1];
     T_must_be_complete_type dummy; (void) dummy;
+    
     delete t_value_;
     t_value_ = 0;
   }
 
+  // 线程局部变量“析构器”，及 TLS 实际绑定的 pthread_key_t
   class Deleter
   {
    public:
@@ -68,10 +75,11 @@ class ThreadLocalSingleton : noncopyable
     pthread_key_t pkey_;
   };
 
-  static __thread T* t_value_;
-  static Deleter deleter_;
+  static __thread T* t_value_;  // 线程级单例指针
+  static Deleter deleter_;      // 线程 TLS 底层实现
 };
 
+// 静态变量申明及初始化
 template<typename T>
 __thread T* ThreadLocalSingleton<T>::t_value_ = 0;
 

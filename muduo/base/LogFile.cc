@@ -29,6 +29,7 @@ LogFile::LogFile(const string& basename,
     lastRoll_(0),
     lastFlush_(0)
 {
+  // 不能带有文件路径
   assert(basename.find('/') == string::npos);
   rollFile();
 }
@@ -63,26 +64,33 @@ void LogFile::flush()
 
 void LogFile::append_unlocked(const char* logline, int len)
 {
+  // 写入日志文件缓冲区（非线程安全）
   file_->append(logline, len);
 
   if (file_->writtenBytes() > rollSize_)
   {
+    // 滚动日志
     rollFile();
   }
   else
   {
     ++count_;
+    // 每写入 1024 条日志，检测一次日志文件（是否滚动或刷新到磁盘）
     if (count_ >= checkEveryN_)
     {
       count_ = 0;
       time_t now = ::time(NULL);
+
+      // 今日 0 点时间戳（当日开始时间）
       time_t thisPeriod_ = now / kRollPerSeconds_ * kRollPerSeconds_;
       if (thisPeriod_ != startOfPeriod_)
       {
+        // 隔天必须滚动日志
         rollFile();
       }
       else if (now - lastFlush_ > flushInterval_)
       {
+        // 大于刷新频率间隔，主动刷新到磁盘
         lastFlush_ = now;
         file_->flush();
       }
@@ -90,10 +98,13 @@ void LogFile::append_unlocked(const char* logline, int len)
   }
 }
 
+// 滚动日志（被滚动的 FileUtil 日志对象析构时，会将数据刷新到磁盘）
 bool LogFile::rollFile()
 {
   time_t now = 0;
   string filename = getLogFileName(basename_, &now);
+
+  // 今日 0 点时间戳（当日开始时间）
   time_t start = now / kRollPerSeconds_ * kRollPerSeconds_;
 
   if (now > lastRoll_)
@@ -107,6 +118,7 @@ bool LogFile::rollFile()
   return false;
 }
 
+// 日志文件名：basename.Ymd-HMS.hostname.pid.log
 string LogFile::getLogFileName(const string& basename, time_t* now)
 {
   string filename;

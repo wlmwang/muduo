@@ -8,11 +8,36 @@
 
 #include "muduo/base/CurrentThread.h"
 #include "muduo/base/noncopyable.h"
-#include <assert.h>
+#include <assert.h>   // For __assert_perror_fail()
 #include <pthread.h>
 
 // Thread safety annotations {
 // https://clang.llvm.org/docs/ThreadSafetyAnalysis.html
+
+// tips:
+// see: https://zhuanlan.zhihu.com/p/47837673
+// 线程安全注解的基本用法是，通过代码注解（annotations ）告诉编译器
+// 哪些成员变量和成员函数是受哪个 mutex保护，这样如果忘记了加锁，编
+// 译器会给警告。
+// 因为在后续维护别人的代码时候，往往不像原作者那样深刻理解设计意图，
+// 特别容易遗漏线程安全的假设。这个工具正是为了应对这种情况，让原作
+// 者能把设计意图用代码注解清楚地写出来并让编译器能自动检查，让后来
+// 的维护者就不容易犯低级错误了。
+
+
+// clang 启用线程安全注解宏 -Wthread-safety
+//
+// 只要在自己的代码中用 GUARDED_BY 表明哪个成员变量是被哪个 mutex 
+// 保护的，就可以让 clang 帮你检查有没有遗漏加锁的情况了。别忘了用 
+// clang -Wthread-safety 编译你的代码。
+// 
+// Use like:
+// class Test {
+// private:
+//   mutable MutexLock mutex_;
+//   std::vector<int> data_ GUARDED_BY(mutex_);
+// }
+
 
 // Enable thread safety attributes only with clang.
 // The attributes can be safely erased when compiling with other compilers.
@@ -81,8 +106,16 @@
 
 // End of thread safety annotations }
 
+
+// 始终检测 pthread 函数簇的返回值（无论是 DEBUG/RELEASE 编译）
 #ifdef CHECK_PTHREAD_RETURN_VALUE
 
+// \file <assert.h>
+// __assert_perror_fail 函数根据 errnum 值，输出相应的错误信息到标准
+// 错误流中，然后调用 abort 函数终止程序（生成 coredump）
+// __assert_perror_fail 是调用 strerror_r 来输出 errnum 诊断信息的
+//
+// 在 Linux 中 __assert_perror_fail 函数只在未定义 NDEBUG 下才申明
 #ifdef NDEBUG
 __BEGIN_DECLS
 extern void __assert_perror_fail (int errnum,
@@ -93,6 +126,7 @@ extern void __assert_perror_fail (int errnum,
 __END_DECLS
 #endif
 
+// 无论是 DEBUG/RELEASE 编译，都进行返回值断言
 #define MCHECK(ret) ({ __typeof__ (ret) errnum = (ret);         \
                        if (__builtin_expect(errnum != 0, 0))    \
                          __assert_perror_fail (errnum, __FILE__, __LINE__, __func__);})
@@ -118,6 +152,8 @@ namespace muduo
 //   mutable MutexLock mutex_;
 //   std::vector<int> data_ GUARDED_BY(mutex_);
 // };
+//
+// 互斥体
 class CAPABILITY("mutex") MutexLock : noncopyable
 {
  public:
@@ -164,8 +200,14 @@ class CAPABILITY("mutex") MutexLock : noncopyable
   }
 
  private:
+  // 友元类。方便条件变量访问互斥体内部属性
   friend class Condition;
 
+  // RAII 手法释放互斥体内部维护的持锁状态 holder_
+  // 一般用在条件变量中，进入阻塞等待通知前，先释放锁
+  //
+  // 条件变量进入等待时，内核会原子释放锁；并在结束时，调用线程会
+  // 再次获取锁。即使返回错误时也是如此
   class UnassignGuard : noncopyable
   {
    public:
@@ -204,6 +246,8 @@ class CAPABILITY("mutex") MutexLock : noncopyable
 //   MutexLockGuard lock(mutex_);
 //   return data_.size();
 // }
+//
+// RAII 手法互斥体
 class SCOPED_CAPABILITY MutexLockGuard : noncopyable
 {
  public:

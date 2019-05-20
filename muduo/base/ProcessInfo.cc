@@ -7,14 +7,14 @@
 #include "muduo/base/CurrentThread.h"
 #include "muduo/base/FileUtil.h"
 
-#include <algorithm>
+#include <algorithm>  // std::sort
 
 #include <assert.h>
-#include <dirent.h>
-#include <pwd.h>
-#include <stdio.h> // snprintf
-#include <stdlib.h>
-#include <unistd.h>
+#include <dirent.h> // For scandir
+#include <pwd.h>    // getpwuid_r
+#include <stdio.h>  // snprintf
+#include <stdlib.h> // For atoi
+#include <unistd.h> // For getpid,geteuid, gethostname, readlink
 #include <sys/resource.h>
 #include <sys/times.h>
 
@@ -22,6 +22,20 @@ namespace muduo
 {
 namespace detail
 {
+
+// tips:
+// int scandir(const char *dir, struct dirent **namelist, int (*filter)(const void *b),
+//      int (*compare)(const struct dirent **, const struct dirent **));
+// 
+// 函数 scandir 扫描 dir 目录下以及 dir 子目录下满足 filter 过滤模式的文件，返回的结果
+// 是 compare 函数经过排序的，并保存在 namelist 中。
+// filter 函数若不想要将某个目录结构复制到 namelist 数组就返回 0，若 filter 为空指针则
+// 代表选择所有的目录结构。
+// scandir() 若是要排列目录名称字母，可使用 alphasort() 
+// 注意：namelist 是通过 malloc 动态分配内存的，所以在使用时要注意释放内存。
+
+
+// scandir() 中文件描述符过滤器。主要为了统计 fd 数量，而非本身（返回 0）
 __thread int t_numOpenedFiles = 0;
 int fdDirFilter(const struct dirent* d)
 {
@@ -32,6 +46,7 @@ int fdDirFilter(const struct dirent* d)
   return 0;
 }
 
+// scandir() 中线程过滤器。主要为了统计 task 数量，而非本身（返回 0）
 __thread std::vector<pid_t>* t_pids = NULL;
 int taskDirFilter(const struct dirent* d)
 {
@@ -42,6 +57,7 @@ int taskDirFilter(const struct dirent* d)
   return 0;
 }
 
+// scandir() 浏览过滤目录
 int scanDir(const char *dirpath, int (*filter)(const struct dirent *))
 {
   struct dirent** namelist = NULL;
@@ -50,6 +66,7 @@ int scanDir(const char *dirpath, int (*filter)(const struct dirent *))
   return result;
 }
 
+// 进程启动，全局初始化的时间戳、时钟 tick、pagesize
 Timestamp g_startTime = Timestamp::now();
 // assume those won't change during the life time of a process.
 int g_clockTicks = static_cast<int>(::sysconf(_SC_CLK_TCK));
@@ -77,6 +94,7 @@ uid_t ProcessInfo::uid()
   return ::getuid();
 }
 
+// 用户名
 string ProcessInfo::username()
 {
   struct passwd pwd;
@@ -92,6 +110,8 @@ string ProcessInfo::username()
   return name;
 }
 
+// 倘若执行文件的 SUID 位已被设置，该文件执行时，其进程的 euid 值
+// 便会设成该文件所有者的 uid
 uid_t ProcessInfo::euid()
 {
   return ::geteuid();
@@ -112,6 +132,7 @@ int ProcessInfo::pageSize()
   return g_pageSize;
 }
 
+// 是否编译模式
 bool ProcessInfo::isDebugBuild()
 {
 #ifdef NDEBUG
@@ -121,6 +142,19 @@ bool ProcessInfo::isDebugBuild()
 #endif
 }
 
+
+// tips:
+// \file #include <unistd.h>
+// int gethostname(char *name, size_t len);
+// 返回本地主机的标准主机名
+//
+// \file #include <netdb.h>
+// \file #include <sys/socket.h>
+// struct hostent *gethostbyname(const char *name);
+// 用域名或主机名获取IP地址
+
+
+// 当前主机名（\0 结尾）
 string ProcessInfo::hostname()
 {
   // HOST_NAME_MAX 64
@@ -137,6 +171,7 @@ string ProcessInfo::hostname()
   }
 }
 
+// 进程名称
 string ProcessInfo::procname()
 {
   return procname(procStat()).as_string();
@@ -168,6 +203,7 @@ string ProcessInfo::procStat()
   return result;
 }
 
+// 调用线程 stat 文件
 string ProcessInfo::threadStat()
 {
   char buf[64];
@@ -177,6 +213,7 @@ string ProcessInfo::threadStat()
   return result;
 }
 
+// 执行文件，启动时当前路径
 string ProcessInfo::exePath()
 {
   string result;
@@ -189,6 +226,7 @@ string ProcessInfo::exePath()
   return result;
 }
 
+// 统计打开 fd 数量
 int ProcessInfo::openedFiles()
 {
   t_numOpenedFiles = 0;
@@ -196,6 +234,7 @@ int ProcessInfo::openedFiles()
   return t_numOpenedFiles;
 }
 
+// 进程打开 fd 限制
 int ProcessInfo::maxOpenFiles()
 {
   struct rlimit rl;
@@ -209,6 +248,7 @@ int ProcessInfo::maxOpenFiles()
   }
 }
 
+// CPU 时钟
 ProcessInfo::CpuTime ProcessInfo::cpuTime()
 {
   ProcessInfo::CpuTime t;
@@ -222,6 +262,7 @@ ProcessInfo::CpuTime ProcessInfo::cpuTime()
   return t;
 }
 
+// 统计线程数量
 int ProcessInfo::numThreads()
 {
   int result = 0;
@@ -234,6 +275,7 @@ int ProcessInfo::numThreads()
   return result;
 }
 
+// 获取线程 tid 列表
 std::vector<pid_t> ProcessInfo::threads()
 {
   std::vector<pid_t> result;

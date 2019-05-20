@@ -8,6 +8,8 @@
 #include <errno.h>
 
 // returns true if time out, false otherwise.
+//
+// 等待条件变量通知。超时返回 true，否则返回 false
 bool muduo::Condition::waitForSeconds(double seconds)
 {
   struct timespec abstime;
@@ -19,8 +21,16 @@ bool muduo::Condition::waitForSeconds(double seconds)
 
   abstime.tv_sec += static_cast<time_t>((abstime.tv_nsec + nanoseconds) / kNanoSecondsPerSecond);
   abstime.tv_nsec = static_cast<long>((abstime.tv_nsec + nanoseconds) % kNanoSecondsPerSecond);
+  
 
+  // 条件变量进入等待时，内核会原子释放锁；并在结束时，调用线程会再次获取锁
+  // 即使返回错误时也是如此
+
+  // 释放持锁状态
   MutexLock::UnassignGuard ug(mutex_);
+  
+  // 带超时阻塞等待通知
+  // pthread_cond_timedwait() 在成功完成之后，会返回零；其他任何返回值，都表示出现了错误
   return ETIMEDOUT == pthread_cond_timedwait(&pcond_, mutex_.getPthreadMutex(), &abstime);
 }
 

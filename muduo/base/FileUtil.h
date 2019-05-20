@@ -18,6 +18,8 @@ namespace FileUtil
 {
 
 // read small file < 64KB
+//
+// “小”文件读取类
 class ReadSmallFile : noncopyable
 {
  public:
@@ -25,6 +27,9 @@ class ReadSmallFile : noncopyable
   ~ReadSmallFile();
 
   // return errno
+  //
+  // 读取文件基本信息和数据内容
+  // 最大读取 maxSize 字节（读取不受 64k 限制。底层会循环读取）
   template<typename String>
   int readToString(int maxSize,
                    String* content,
@@ -34,6 +39,8 @@ class ReadSmallFile : noncopyable
 
   /// Read at maxium kBufferSize into buf_
   // return errno
+  //
+  // 读取文件数据内容到 buf_ 缓冲区（\0 结尾）。最大 64k 限制
   int readToBuffer(int* size);
 
   const char* buffer() const { return buf_; }
@@ -43,10 +50,12 @@ class ReadSmallFile : noncopyable
  private:
   int fd_;
   int err_;
-  char buf_[kBufferSize];
+  char buf_[kBufferSize];   // 自定义缓冲区 64k
 };
 
 // read the file content, returns errno if error happens.
+//
+// 包装小文件读取函数。最大读取 maxSize 字节（读取不受 64k 限制，内部会循环读取）
 template<typename String>
 int readFile(StringArg filename,
              int maxSize,
@@ -60,6 +69,9 @@ int readFile(StringArg filename,
 }
 
 // not thread safe
+//
+// 文件内容追加类（非线程安全。使用了 ::fwrite_unlocked()）
+// 使用者需保证线程安全
 class AppendFile : noncopyable
 {
  public:
@@ -67,6 +79,7 @@ class AppendFile : noncopyable
 
   ~AppendFile();
 
+  // 循环阻塞的将指定长度数据全部写入文件流句柄（全部写入或遇到错误时返回）
   void append(const char* logline, size_t len);
 
   void flush();
@@ -77,9 +90,9 @@ class AppendFile : noncopyable
 
   size_t write(const char* logline, size_t len);
 
-  FILE* fp_;
-  char buffer_[64*1024];
-  off_t writtenBytes_;
+  FILE* fp_;              // 文件句柄指针
+  char buffer_[64*1024];  // FILE* 自定义缓冲区 64k
+  off_t writtenBytes_;    // 当前文件已写入总字节数
 };
 
 }  // namespace FileUtil

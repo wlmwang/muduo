@@ -9,6 +9,7 @@
 namespace muduo
 {
 
+// 初始化异常字符串、调用栈
 Exception::Exception(string msg)
   : message_(std::move(msg)),
     stack_(CurrentThread::stackTrace(/*demangle=*/false))

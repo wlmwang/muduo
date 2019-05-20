@@ -15,6 +15,7 @@
 namespace muduo
 {
 
+// 无界阻塞队列（先进先出, FIFO）
 template<typename T>
 class BlockingQueue : noncopyable
 {
@@ -26,6 +27,7 @@ class BlockingQueue : noncopyable
   {
   }
 
+  // 队列生产者（添加+通知）
   void put(const T& x)
   {
     MutexLockGuard lock(mutex_);
@@ -33,7 +35,6 @@ class BlockingQueue : noncopyable
     notEmpty_.notify(); // wait morphing saves us
     // http://www.domaigne.com/blog/computing/condvars-signal-with-mutex-locked-or-not/
   }
-
   void put(T&& x)
   {
     MutexLockGuard lock(mutex_);
@@ -41,6 +42,7 @@ class BlockingQueue : noncopyable
     notEmpty_.notify();
   }
 
+  // 对象消费者（阻塞+获取）
   T take()
   {
     MutexLockGuard lock(mutex_);
@@ -64,7 +66,7 @@ class BlockingQueue : noncopyable
  private:
   mutable MutexLock mutex_;
   Condition         notEmpty_ GUARDED_BY(mutex_);
-  std::deque<T>     queue_ GUARDED_BY(mutex_);
+  std::deque<T>     queue_ GUARDED_BY(mutex_);    // 无界队列
 };
 
 }  // namespace muduo

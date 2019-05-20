@@ -12,14 +12,16 @@
 namespace muduo
 {
 
+// 阻塞倒计数
 class CountDownLatch : noncopyable
 {
  public:
 
-  explicit CountDownLatch(int count);
+  explicit CountDownLatch(int count/**倒计数量*/);
 
   void wait();
 
+  // 广播通知所有阻塞的监听者
   void countDown();
 
   int getCount() const;
@@ -27,7 +29,7 @@ class CountDownLatch : noncopyable
  private:
   mutable MutexLock mutex_;
   Condition condition_ GUARDED_BY(mutex_);
-  int count_ GUARDED_BY(mutex_);
+  int count_ GUARDED_BY(mutex_);	// 倒计数量
 };
 
 }  // namespace muduo

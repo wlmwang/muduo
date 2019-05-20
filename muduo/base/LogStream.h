@@ -18,9 +18,10 @@ namespace muduo
 namespace detail
 {
 
-const int kSmallBuffer = 4000;
-const int kLargeBuffer = 4000*1000;
+const int kSmallBuffer = 4000;  // ~4k 单条日志大小限制
+const int kLargeBuffer = 4000*1000; // ~4m 单个异步日志缓冲区大小（可缓存最少 1000条）
 
+// 固定大小 buffer 缓冲区
 template<int SIZE>
 class FixedBuffer : noncopyable
 {
@@ -36,6 +37,7 @@ class FixedBuffer : noncopyable
     setCookie(cookieEnd);
   }
 
+  // 追加方式，拷贝 buf 日志字节流到当前缓冲区中。单条日志不能多于 4k
   void append(const char* /*restrict*/ buf, size_t len)
   {
     // FIXME: append partially
@@ -46,18 +48,24 @@ class FixedBuffer : noncopyable
     }
   }
 
+  // 获取日志字节流（头地址、字节长度）接口
   const char* data() const { return data_; }
   int length() const { return static_cast<int>(cur_ - data_); }
 
   // write to data_ directly
+  // 
+  // 以下函数可供使用者直接写入字节流缓冲区时，可能要调用的接口方法
   char* current() { return cur_; }
   int avail() const { return static_cast<int>(end() - cur_); }
   void add(size_t len) { cur_ += len; }
 
+  // 清除/初始化字节流缓冲区
   void reset() { cur_ = data_; }
   void bzero() { memZero(data_, sizeof data_); }
 
   // for used by GDB
+  //
+  // todo
   const char* debugString();
   void setCookie(void (*cookie)()) { cookie_ = cookie; }
   // for used by unit test
@@ -70,18 +78,22 @@ class FixedBuffer : noncopyable
   static void cookieStart();
   static void cookieEnd();
 
-  void (*cookie_)();
-  char data_[SIZE];
-  char* cur_;
+  void (*cookie_)();  // todo
+  char data_[SIZE];   // 日志字节流缓冲区（单条日志）
+  char* cur_;         // 当前已使用缓冲区的偏移地址
 };
 
 }  // namespace detail
 
+// “后端”日志类：operator<< 类型安全、日志流缓冲
 class LogStream : noncopyable
 {
   typedef LogStream self;
  public:
   typedef detail::FixedBuffer<detail::kSmallBuffer> Buffer;
+
+  // 重载各种数据类型的输出操作符 operator<<
+  // 即，类型安全
 
   self& operator<<(bool v)
   {
@@ -98,6 +110,8 @@ class LogStream : noncopyable
   self& operator<<(long long);
   self& operator<<(unsigned long long);
 
+  // “无类型”数据会被当成 16 进制值输出（一般用在输出地址值）
+  // 本质上，参数是一个十进制整型值，底层将其转换成 16 进制的字符串
   self& operator<<(const void*);
 
   self& operator<<(float v)
@@ -153,6 +167,7 @@ class LogStream : noncopyable
     return *this;
   }
 
+  // 追加拷贝日志数据、重置缓冲区
   void append(const char* data, int len) { buffer_.append(data, len); }
   const Buffer& buffer() const { return buffer_; }
   void resetBuffer() { buffer_.reset(); }
@@ -163,11 +178,12 @@ class LogStream : noncopyable
   template<typename T>
   void formatInteger(T);
 
-  Buffer buffer_;
+  Buffer buffer_;   // 日志缓冲区
 
-  static const int kMaxNumericSize = 32;
+  static const int kMaxNumericSize = 32; // 最大数字长度（精度）
 };
 
+// 算术数据类型格式化（c-printf style）
 class Fmt // : noncopyable
 {
  public:
@@ -182,6 +198,8 @@ class Fmt // : noncopyable
   int length_;
 };
 
+// 将格式化后的字节流，追加拷贝到日志流中
+// os << muduo::Fmt("%4.2f", 1.2);
 inline LogStream& operator<<(LogStream& s, const Fmt& fmt)
 {
   s.append(fmt.data(), fmt.length());

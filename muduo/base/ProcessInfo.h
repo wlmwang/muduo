@@ -17,20 +17,25 @@
 namespace muduo
 {
 
+// 进程信息
 namespace ProcessInfo
 {
   pid_t pid();
   string pidString();
-  uid_t uid();
+  uid_t uid();    // 进程实际用户 uid
   string username();
-  uid_t euid();
-  Timestamp startTime();
-  int clockTicksPerSecond();
-  int pageSize();
+
+  // 倘若执行文件的 SUID 位已被设置，该文件执行时，其进程的 euid 值
+  // 便会设成该文件所有者的 uid
+  uid_t euid();   // 进程有效用户 uid
+  
+  Timestamp startTime();  // 进程启动时间戳
+  int clockTicksPerSecond();  // 时钟每秒 tick 数
+  int pageSize();   // 页大小
   bool isDebugBuild();  // constexpr
 
-  string hostname();
-  string procname();
+  string hostname();  // gethostname 当前主机名（\0 结尾）
+  string procname();  // 进程名
   StringPiece procname(const string& stat);
 
   /// read /proc/self/status

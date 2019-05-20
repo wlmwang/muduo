@@ -10,7 +10,7 @@
 #include <type_traits>
 #include <assert.h>
 #include <string.h>
-#include <stdint.h>
+#include <stdint.h>   // typedef unsigned long int uintptr_t;
 #include <stdio.h>
 
 #ifndef __STDC_FORMAT_MACROS
@@ -35,20 +35,27 @@ namespace muduo
 namespace detail
 {
 
+// 10 进制整型转换相应字符对照表
 const char digits[] = "9876543210123456789";
 const char* zero = digits + 9;
 static_assert(sizeof(digits) == 20, "wrong number of digits");
 
+// 16 进制整型转换相应字符对照表
 const char digitsHex[] = "0123456789ABCDEF";
 static_assert(sizeof digitsHex == 17, "wrong number of digitsHex");
 
 // Efficient Integer to String Conversions, by Matthew Wilson.
+//
+// 高效的 10 进制整型转换字符串 by Matthew Wilson
 template<typename T>
 size_t convert(char buf[], T value)
 {
   T i = value;
   char* p = buf;
 
+  // c++11 标准规定，整型除法，商向 0 取整。所以余数会与被除数符号相同
+  // 所以是：-27/10 = -2 ; -27%10 = -7
+  // 而不是：-27/10 = -3 ; -27%10 = 3
   do
   {
     int lsd = static_cast<int>(i % 10);
@@ -61,11 +68,14 @@ size_t convert(char buf[], T value)
     *p++ = '-';
   }
   *p = '\0';
+
+  // 反转字符串
   std::reverse(buf, p);
 
   return p - buf;
 }
 
+// 本质上 value 是十进制整型值，转换成 16 进制字符串
 size_t convertHex(char buf[], uintptr_t value)
 {
   uintptr_t i = value;
@@ -84,6 +94,7 @@ size_t convertHex(char buf[], uintptr_t value)
   return p - buf;
 }
 
+// 显示模板实例化
 template class FixedBuffer<kSmallBuffer>;
 template class FixedBuffer<kLargeBuffer>;
 
@@ -99,6 +110,8 @@ template class FixedBuffer<kLargeBuffer>;
  [1.00P, 999P]
  [1.00E, inf)
 */
+//
+// 格式化数字为一个包含 5 个字符的字符串，单位进制为 1000
 std::string formatSI(int64_t s)
 {
   double n = static_cast<double>(s);
@@ -147,6 +160,8 @@ std::string formatSI(int64_t s)
  [ 100Ki, 1023Ki]
  [1.00Mi, 9.99Mi]
 */
+//
+// 格式化数字为一个包含 5 个字符的字符串，单位进制为 1024
 std::string formatIEC(int64_t s)
 {
   double n = static_cast<double>(s);
@@ -204,6 +219,7 @@ std::string formatIEC(int64_t s)
 
 }  // namespace muduo
 
+// for used by GDB
 template<int SIZE>
 const char* FixedBuffer<SIZE>::debugString()
 {
@@ -221,6 +237,7 @@ void FixedBuffer<SIZE>::cookieEnd()
 {
 }
 
+// 编译器静态检查最大整型数字长度（精度）。以检测缓冲区本次写入的数字是否溢出
 void LogStream::staticCheck()
 {
   static_assert(kMaxNumericSize - 10 > std::numeric_limits<double>::digits10,
@@ -233,6 +250,7 @@ void LogStream::staticCheck()
                 "kMaxNumericSize is large enough");
 }
 
+// 转换整型到字符串，并写入缓冲区中
 template<typename T>
 void LogStream::formatInteger(T v)
 {
@@ -291,6 +309,7 @@ LogStream& LogStream::operator<<(unsigned long long v)
   return *this;
 }
 
+// 本质上，该方法的参数是一个十进制整型值，会被转换成 16 进制字符串（前缀 0x）
 LogStream& LogStream::operator<<(const void* p)
 {
   uintptr_t v = reinterpret_cast<uintptr_t>(p);
@@ -319,6 +338,7 @@ LogStream& LogStream::operator<<(double v)
 template<typename T>
 Fmt::Fmt(const char* fmt, T val)
 {
+  // 必须是算术类型
   static_assert(std::is_arithmetic<T>::value == true, "Must be arithmetic type");
 
   length_ = snprintf(buf_, sizeof buf_, fmt, val);
@@ -327,6 +347,7 @@ Fmt::Fmt(const char* fmt, T val)
 
 // Explicit instantiations
 
+// 显示模板实例化
 template Fmt::Fmt(const char* fmt, char);
 
 template Fmt::Fmt(const char* fmt, short);

@@ -1,8 +1,8 @@
 #ifndef MUDUO_BASE_TYPES_H
 #define MUDUO_BASE_TYPES_H
 
-#include <stdint.h>
-#include <string.h>  // memset
+#include <stdint.h>   // For int8_t uintptr_t...| INT8_MIN
+#include <string.h>  // For memset... size_t|NULL...(stddef.h)
 #include <string>
 
 #ifndef NDEBUG
@@ -76,6 +76,11 @@ inline void memZero(void* p, size_t n)
 // implicit_cast would have been part of the C++ standard library,
 // but the proposal was submitted too late.  It will probably make
 // its way into the language in the future.
+//
+// todo
+// 显式的“隐式转换”有些情况下是有必要的。它是 static_cast|const_cast 的
+// 安全版本，在编译期检查转换是否安全。（非法时，停止编译）。
+// 这里利用了模板需要精确的类型匹配，来进行检查转换是否安全。
 template<typename To, typename From>
 inline To implicit_cast(From const &f)
 {
@@ -100,6 +105,11 @@ inline To implicit_cast(From const &f)
 //    if (dynamic_cast<Subclass2>(foo)) HandleASubclass2Object(foo);
 // You should design the code some other way not to need this.
 
+// 向下转换（父类指针到子类指针）。
+// 1. 若直接用 static_cast 转换，可能会不安全，导致程序崩溃。
+// 2. 若用 dynamic_cast 转换，其存在运行时安全检查的开销。
+//    dynamic_cast 转型失败会返回 NULL（转型对象为指针时）或抛出异常（转型对象为引用时)
+//    dynamic_cast 会动用运行时信息（RTTI）来进行类型安全检查，存在一定的效率损失
 template<typename To, typename From>     // use like this: down_cast<T*>(foo);
 inline To down_cast(From* f)                     // so we only accept pointers
 {
@@ -107,11 +117,14 @@ inline To down_cast(From* f)                     // so we only accept pointers
   // for compile-time type checking, and has no overhead in an
   // optimized build at run-time, as it will be optimized away
   // completely.
+  //
+  // 编译器静态检查，确保 To 是 From* 的子类
   if (false)
   {
     implicit_cast<From*, To>(0);
   }
 
+// 调试模式开启 dynamic_cast 做类型转换的运行时检查。确保转换合法性。
 #if !defined(NDEBUG) && !defined(GOOGLE_PROTOBUF_NO_RTTI)
   assert(f == NULL || dynamic_cast<To>(f) != NULL);  // RTTI: debug mode only!
 #endif

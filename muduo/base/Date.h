@@ -20,6 +20,12 @@ namespace muduo
 /// This class is immutable.
 /// It's recommended to pass it by value, since it's passed in register on x64.
 ///
+// tips:
+// 儒略日（Julian date, JD）是在儒略周期内以连续的日数计算时间的计时法
+// 儒略日的起点定在西元前 4713 年（天文学上记为 -4712 年）1 月 1 日格林威治时
+// 间平午（世界时 12:00）
+//
+// 公历（内部使用儒略日数计时法）
 class Date : public muduo::copyable
           // public boost::less_than_comparable<Date>,
           // public boost::equality_comparable<Date>
@@ -59,6 +65,11 @@ class Date : public muduo::copyable
   ///
   /// Constucts a Date from struct tm
   ///
+  // tips:
+  // struct tm *gmtime_r(const time_t *timep, struct tm *result);
+  // 即：将日历时间 timep 转换为用 GMT 时间表示的时间结构
+  //
+  // struct tm 结构转换成 Date 公历对象
   explicit Date(const struct tm&);
 
   // default copy/assignment/dtor are Okay
@@ -68,6 +79,7 @@ class Date : public muduo::copyable
     std::swap(julianDayNumber_, that.julianDayNumber_);
   }
 
+  // 是否初始化
   bool valid() const { return julianDayNumber_ > 0; }
 
   ///
@@ -101,7 +113,7 @@ class Date : public muduo::copyable
   int julianDayNumber() const { return julianDayNumber_; }
 
  private:
-  int julianDayNumber_;
+  int julianDayNumber_;   // 儒略日数
 };
 
 inline bool operator<(Date x, Date y)

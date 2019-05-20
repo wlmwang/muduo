@@ -4,6 +4,8 @@
 namespace muduo
 {
 
+// 标识、强调派生类不可复制
+// “对象类型” class 标签。（对应其他语言“引用类型”的概念）
 class noncopyable
 {
  public:

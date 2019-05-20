@@ -15,11 +15,12 @@
 namespace muduo
 {
 
+// 有界阻塞队列（先进先出, FIFO）
 template<typename T>
 class BoundedBlockingQueue : noncopyable
 {
  public:
-  explicit BoundedBlockingQueue(int maxSize)
+  explicit BoundedBlockingQueue(int maxSize/**队列最大容量*/)
     : mutex_(),
       notEmpty_(mutex_),
       notFull_(mutex_),
@@ -27,6 +28,7 @@ class BoundedBlockingQueue : noncopyable
   {
   }
 
+  // 队列生产者（添加/阻塞+通知）
   void put(const T& x)
   {
     MutexLockGuard lock(mutex_);
@@ -38,7 +40,6 @@ class BoundedBlockingQueue : noncopyable
     queue_.push_back(x);
     notEmpty_.notify();
   }
-
   void put(T&& x)
   {
     MutexLockGuard lock(mutex_);
@@ -51,6 +52,7 @@ class BoundedBlockingQueue : noncopyable
     notEmpty_.notify();
   }
 
+  // 对象消费者（阻塞/获取+通知）
   T take()
   {
     MutexLockGuard lock(mutex_);
@@ -93,7 +95,7 @@ class BoundedBlockingQueue : noncopyable
   mutable MutexLock          mutex_;
   Condition                  notEmpty_ GUARDED_BY(mutex_);
   Condition                  notFull_ GUARDED_BY(mutex_);
-  boost::circular_buffer<T>  queue_ GUARDED_BY(mutex_);
+  boost::circular_buffer<T>  queue_ GUARDED_BY(mutex_);   // 有界队列
 };
 
 }  // namespace muduo
