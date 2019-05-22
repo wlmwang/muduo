@@ -52,9 +52,12 @@ EPollPoller::~EPollPoller()
   ::close(epollfd_);
 }
 
+// 超时阻塞获取触发事件列表
 Timestamp EPollPoller::poll(int timeoutMs, ChannelList* activeChannels)
 {
   LOG_TRACE << "fd total count " << channels_.size();
+
+  // 等待事件触发 events_.data(), C++11
   int numEvents = ::epoll_wait(epollfd_,
                                &*events_.begin(),
                                static_cast<int>(events_.size()),
@@ -64,7 +67,11 @@ Timestamp EPollPoller::poll(int timeoutMs, ChannelList* activeChannels)
   if (numEvents > 0)
   {
     LOG_TRACE << numEvents << " events happened";
+    
+    // 填充激活事件列表给输出参数
     fillActiveChannels(numEvents, activeChannels);
+    
+    // 扩容内存
     if (implicit_cast<size_t>(numEvents) == events_.size())
     {
       events_.resize(events_.size()*2);
@@ -86,6 +93,7 @@ Timestamp EPollPoller::poll(int timeoutMs, ChannelList* activeChannels)
   return now;
 }
 
+// 填充激活事件列表给输出参数
 void EPollPoller::fillActiveChannels(int numEvents,
                                      ChannelList* activeChannels) const
 {
@@ -94,24 +102,34 @@ void EPollPoller::fillActiveChannels(int numEvents,
   {
     Channel* channel = static_cast<Channel*>(events_[i].data.ptr);
 #ifndef NDEBUG
+    // 测试环境校验上下文 events_[i].data.ptr 指针是否在 channels_ 队列
     int fd = channel->fd();
     ChannelMap::const_iterator it = channels_.find(fd);
     assert(it != channels_.end());
     assert(it->second == channel);
 #endif
+    // 更新 channel 当前触发（激活）事件类别
     channel->set_revents(events_[i].events);
+
+    // 添加激活事件
     activeChannels->push_back(channel);
   }
 }
 
 void EPollPoller::updateChannel(Channel* channel)
 {
+  // 调用线程必须与 EventLoop 在同一个线程（Poller 只属于一个 IO 线程）
   Poller::assertInLoopThread();
+
+  // 在 epoll 中，index 被用作几个特征值（epoll 有注册机制，无需维护索引）
   const int index = channel->index();
   LOG_TRACE << "fd = " << channel->fd()
     << " events = " << channel->events() << " index = " << index;
   if (index == kNew || index == kDeleted)
   {
+    // 1.“新增”一个 channel 到监听事件集合
+    // 2.“已移除”的 channel 重新添加到监听事件集合
+
     // a new one, add with EPOLL_CTL_ADD
     int fd = channel->fd();
     if (index == kNew)
@@ -125,11 +143,15 @@ void EPollPoller::updateChannel(Channel* channel)
       assert(channels_[fd] == channel);
     }
 
+    // 添加
     channel->set_index(kAdded);
     update(EPOLL_CTL_ADD, channel);
   }
   else
   {
+    // 1.更新“已被监听” channel 事件
+    // 2.移除“已被监听” channel 事件
+
     // update existing one with EPOLL_CTL_MOD/DEL
     int fd = channel->fd();
     (void)fd;
@@ -138,11 +160,13 @@ void EPollPoller::updateChannel(Channel* channel)
     assert(index == kAdded);
     if (channel->isNoneEvent())
     {
+      // 移除
       update(EPOLL_CTL_DEL, channel);
       channel->set_index(kDeleted);
     }
     else
     {
+      // 更新
       update(EPOLL_CTL_MOD, channel);
     }
   }
@@ -150,7 +174,9 @@ void EPollPoller::updateChannel(Channel* channel)
 
 void EPollPoller::removeChannel(Channel* channel)
 {
+  // 调用线程必须与 EventLoop 在同一个线程（Poller 只属于一个 IO 线程）
   Poller::assertInLoopThread();
+
   int fd = channel->fd();
   LOG_TRACE << "fd = " << fd;
   assert(channels_.find(fd) != channels_.end());
@@ -158,6 +184,8 @@ void EPollPoller::removeChannel(Channel* channel)
   assert(channel->isNoneEvent());
   int index = channel->index();
   assert(index == kAdded || index == kDeleted);
+
+  // 删除 channel 句柄
   size_t n = channels_.erase(fd);
   (void)n;
   assert(n == 1);
@@ -173,8 +201,8 @@ void EPollPoller::update(int operation, Channel* channel)
 {
   struct epoll_event event;
   memZero(&event, sizeof event);
-  event.events = channel->events();
-  event.data.ptr = channel;
+  event.events = channel->events(); // 关注事件集合
+  event.data.ptr = channel;   // 上下文
   int fd = channel->fd();
   LOG_TRACE << "epoll_ctl op = " << operationToString(operation)
     << " fd = " << fd << " event = { " << channel->eventsToString() << " }";

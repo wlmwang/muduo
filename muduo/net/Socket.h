@@ -13,6 +13,9 @@
 
 #include "muduo/base/noncopyable.h"
 
+// tips:
+// struct tcp_info is in <netinet/tcp.h>
+//
 // struct tcp_info is in <netinet/tcp.h>
 struct tcp_info;
 
@@ -31,6 +34,8 @@ class InetAddress;
 ///
 /// It closes the sockfd when desctructs.
 /// It's thread safe, all operations are delagated to OS.
+//
+// RAII 手法管理 sockfd。并提供针对 listen socket 接口方法
 class Socket : noncopyable
 {
  public:
@@ -39,6 +44,8 @@ class Socket : noncopyable
   { }
 
   // Socket(Socket&&) // move constructor in C++11
+
+  // 关闭 socket，并释放其文件描述符相关资源
   ~Socket();
 
   int fd() const { return sockfd_; }
@@ -55,8 +62,13 @@ class Socket : noncopyable
   /// a descriptor for the accepted socket, which has been
   /// set to non-blocking and close-on-exec. *peeraddr is assigned.
   /// On error, -1 is returned, and *peeraddr is untouched.
+  // 
+  // 接受一个 socket 连接。并设置连接文件描述符为 non-block, close-on-exec
+  // 成功时，返回客户端 fd 文件描述符， peeraddr* 被填充
+  // 失败时，返回 -1，peeraddr* 保持不变
   int accept(InetAddress* peeraddr);
 
+  // 关闭写入通道
   void shutdownWrite();
 
   ///

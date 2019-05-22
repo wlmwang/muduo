@@ -27,6 +27,7 @@ class InetAddress;
 ///
 /// Acceptor of incoming TCP connections.
 ///
+// acceptor TCP 连接分配器（listen socket 包装器）
 class Acceptor : noncopyable
 {
  public:
@@ -38,17 +39,21 @@ class Acceptor : noncopyable
   void setNewConnectionCallback(const NewConnectionCallback& cb)
   { newConnectionCallback_ = cb; }
 
+  // 端口 listen，并监听可读事件
   bool listenning() const { return listenning_; }
   void listen();
 
  private:
+  // 可读事件入口函数（接受新连接）
   void handleRead();
 
-  EventLoop* loop_;
-  Socket acceptSocket_;
-  Channel acceptChannel_;
-  NewConnectionCallback newConnectionCallback_;
+  EventLoop* loop_;         // 所属 IO 线程
+  Socket acceptSocket_;     // listen socket
+  Channel acceptChannel_;   // listen socket channel
+  NewConnectionCallback newConnectionCallback_; // 新连接回调函数
   bool listenning_;
+
+  // 预留一个空闲 fd，防止 fd 达到系统最大限制的 max open files，从而造成 busy-loop
   int idleFd_;
 };
 

@@ -18,7 +18,7 @@
 #include <algorithm>
 
 #include <signal.h>
-#include <sys/eventfd.h>
+#include <sys/eventfd.h>  // For eventfd
 #include <unistd.h>
 
 using namespace muduo;
@@ -26,10 +26,13 @@ using namespace muduo::net;
 
 namespace
 {
+
+// 线程级全局变量。保存在当前线程中实例化的 EventLoop 对象地址
 __thread EventLoop* t_loopInThisThread = 0;
 
-const int kPollTimeMs = 10000;
+const int kPollTimeMs = 10000;  // 10s 超时
 
+// 创建事件文件描述符
 int createEventfd()
 {
   int evtfd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
@@ -53,7 +56,9 @@ class IgnoreSigPipe
 };
 #pragma GCC diagnostic error "-Wold-style-cast"
 
+// 全局忽略 SIGPIPE 信号
 IgnoreSigPipe initObj;
+
 }  // namespace
 
 EventLoop* EventLoop::getEventLoopOfCurrentThread()
@@ -74,6 +79,7 @@ EventLoop::EventLoop()
     wakeupChannel_(new Channel(this, wakeupFd_)),
     currentActiveChannel_(NULL)
 {
+  // 每个线程不能有多于一个的 EventLoop 实例
   LOG_DEBUG << "EventLoop created " << this << " in thread " << threadId_;
   if (t_loopInThisThread)
   {
@@ -82,11 +88,16 @@ EventLoop::EventLoop()
   }
   else
   {
+    // 保存 EventLoop 实例到当前线程全局变量中
     t_loopInThisThread = this;
   }
+
+  // 线程间通信，其他线程唤醒本线程，在本线程空间中执行的回调函数
   wakeupChannel_->setReadCallback(
       std::bind(&EventLoop::handleRead, this));
   // we are always reading the wakeupfd
+  //
+  // 总是开启读事件。监听被唤醒动作
   wakeupChannel_->enableReading();
 }
 
@@ -94,6 +105,8 @@ EventLoop::~EventLoop()
 {
   LOG_DEBUG << "EventLoop " << this << " of thread " << threadId_
             << " destructs in thread " << CurrentThread::tid();
+
+  // 关闭监听事件
   wakeupChannel_->disableAll();
   wakeupChannel_->remove();
   ::close(wakeupFd_);
@@ -103,21 +116,29 @@ EventLoop::~EventLoop()
 void EventLoop::loop()
 {
   assert(!looping_);
+
+  // 调用线程与 EventLoop 实例化的事件循环线程必须是同一个
   assertInLoopThread();
+
   looping_ = true;
   quit_ = false;  // FIXME: what if someone calls quit() before loop() ?
   LOG_TRACE << "EventLoop " << this << " start looping";
 
   while (!quit_)
   {
+    // 获取当前激活事件列表
     activeChannels_.clear();
     pollReturnTime_ = poller_->poll(kPollTimeMs, &activeChannels_);
+
     ++iteration_;
     if (Logger::logLevel() <= Logger::TRACE)
     {
       printActiveChannels();
     }
+
     // TODO sort channel by priority
+    
+    // 事件正在分发
     eventHandling_ = true;
     for (Channel* channel : activeChannels_)
     {
@@ -126,6 +147,8 @@ void EventLoop::loop()
     }
     currentActiveChannel_ = NULL;
     eventHandling_ = false;
+
+    // IO 线程被唤醒后的回调函数
     doPendingFunctors();
   }
 
@@ -153,12 +176,14 @@ void EventLoop::runInLoop(Functor cb)
   }
   else
   {
+    // 调用其他线程 EventLoop 时，线程安全前提，使用队列方式添加任务，并唤醒该线程
     queueInLoop(std::move(cb));
   }
 }
 
 void EventLoop::queueInLoop(Functor cb)
 {
+  // 线程安全方式将任务添加至任务队列
   {
   MutexLockGuard lock(mutex_);
   pendingFunctors_.push_back(std::move(cb));
@@ -166,6 +191,7 @@ void EventLoop::queueInLoop(Functor cb)
 
   if (!isInLoopThread() || callingPendingFunctors_)
   {
+    // 唤醒 IO 线程
     wakeup();
   }
 }
@@ -198,13 +224,21 @@ void EventLoop::cancel(TimerId timerId)
   return timerQueue_->cancel(timerId);
 }
 
+// 更新多路复用 Poller 监听队列
 void EventLoop::updateChannel(Channel* channel)
 {
+  // 每个 channel 始终只在一个 IO 线程中
+  // 并且他也不会转移到另一个 IO 线程中
   assert(channel->ownerLoop() == this);
+
+  // 调用线程必须是当前的 IO 线程
   assertInLoopThread();
+
+  // 更新多路复用 Poller 监听队列
   poller_->updateChannel(channel);
 }
 
+// 移除多路复用 Poller 监听队列
 void EventLoop::removeChannel(Channel* channel)
 {
   assert(channel->ownerLoop() == this);
@@ -233,6 +267,7 @@ void EventLoop::abortNotInLoopThread()
 
 void EventLoop::wakeup()
 {
+  // 写入一个数据触发（唤醒）IO 线程的可读事件
   uint64_t one = 1;
   ssize_t n = sockets::write(wakeupFd_, &one, sizeof one);
   if (n != sizeof one)
@@ -243,6 +278,7 @@ void EventLoop::wakeup()
 
 void EventLoop::handleRead()
 {
+  // 将唤醒数据读取清空
   uint64_t one = 1;
   ssize_t n = sockets::read(wakeupFd_, &one, sizeof one);
   if (n != sizeof one)
@@ -261,6 +297,7 @@ void EventLoop::doPendingFunctors()
   functors.swap(pendingFunctors_);
   }
 
+  // 循环调用 IO 线程唤醒回调
   for (const Functor& functor : functors)
   {
     functor();

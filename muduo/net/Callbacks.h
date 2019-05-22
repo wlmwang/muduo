@@ -57,9 +57,14 @@ namespace net
 
 // All client visible callbacks go here.
 
+// 客户端连接 TcpConnection 使用 std::shared_ptr<> 管理。
+// 让其生命周期由网络库、用户应用程序共同维护决定。
+
 class Buffer;
 class TcpConnection;
 typedef std::shared_ptr<TcpConnection> TcpConnectionPtr;
+
+// 声明所有面向“用户应用程序”的可能会使用的回调函数原型
 typedef std::function<void()> TimerCallback;
 typedef std::function<void (const TcpConnectionPtr&)> ConnectionCallback;
 typedef std::function<void (const TcpConnectionPtr&)> CloseCallback;
@@ -71,6 +76,7 @@ typedef std::function<void (const TcpConnectionPtr&,
                             Buffer*,
                             Timestamp)> MessageCallback;
 
+// 默认的连接|关闭、消息处理回调函数
 void defaultConnectionCallback(const TcpConnectionPtr& conn);
 void defaultMessageCallback(const TcpConnectionPtr& conn,
                             Buffer* buffer,

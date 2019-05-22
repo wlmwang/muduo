@@ -23,6 +23,7 @@ namespace net
 ///
 /// Internal class for timer event.
 ///
+// 定时器事件
 class Timer : noncopyable
 {
  public:
@@ -48,11 +49,11 @@ class Timer : noncopyable
   static int64_t numCreated() { return s_numCreated_.get(); }
 
  private:
-  const TimerCallback callback_;
-  Timestamp expiration_;
-  const double interval_;
-  const bool repeat_;
-  const int64_t sequence_;
+  const TimerCallback callback_;  // 回调
+  Timestamp expiration_;          // 过期时间点（到期）
+  const double interval_;         // 定时器事件触发频率（时间间隔）
+  const bool repeat_;             // 定时器事件是否是重复的
+  const int64_t sequence_;        // 定时器分配的唯一序列
 
   static AtomicInt64 s_numCreated_;
 };

@@ -36,9 +36,20 @@ class TimerQueue;
 /// Reactor, at most one per thread.
 ///
 /// This is an interface class, so don't expose too much details.
+//
+// 事件循环类。其主要作用有：
+// 1. 粘合各个组件：Tcpserver/Acceptor/Poller 等以 EventLoop 为参数的组件
+// 2. 标识一个线程。即，每个 IO 线程有且仅有一个 EventLoop 对象；同理，创
+//    建 EventLoop 的那个线程定义为 IO 线程
+// 3. 使用 EventLoop 机制实现各个组件对象线程安全。当某个组件方法在非所属
+//    的 IO 线程中被调用，实际的方法执行动作会被转到所属 IO线程中执行：也
+//    就是该组件实例化时，传递的那个 EventLoop 标识的那个线程
+//
+// 其作用颇像一个“上帝”的角色
 class EventLoop : noncopyable
 {
  public:
+  // EventLoop 唤醒回调
   typedef std::function<void()> Functor;
 
   EventLoop();
@@ -49,6 +60,7 @@ class EventLoop : noncopyable
   ///
   /// Must be called in the same thread as creation of the object.
   ///
+  // 启动该 IO 线程事件主循环
   void loop();
 
   /// Quits loop.
@@ -101,11 +113,14 @@ class EventLoop : noncopyable
 
   // internal usage
   void wakeup();
+  // 更新多路复用 Poller 监听队列
   void updateChannel(Channel* channel);
   void removeChannel(Channel* channel);
   bool hasChannel(Channel* channel);
 
   // pid_t threadId() const { return threadId_; }
+  //
+  // 调用线程不在所属的 IO 线程时，退出程序
   void assertInLoopThread()
   {
     if (!isInLoopThread())
@@ -113,10 +128,13 @@ class EventLoop : noncopyable
       abortNotInLoopThread();
     }
   }
+  // 调用线程是否是所属的 IO 线程
   bool isInLoopThread() const { return threadId_ == CurrentThread::tid(); }
+
   // bool callingPendingFunctors() const { return callingPendingFunctors_; }
   bool eventHandling() const { return eventHandling_; }
 
+  // 设置上下文
   void setContext(const boost::any& context)
   { context_ = context; }
 
@@ -126,6 +144,7 @@ class EventLoop : noncopyable
   boost::any* getMutableContext()
   { return &context_; }
 
+  // 获取当前线程的 EventLoop 对象
   static EventLoop* getEventLoopOfCurrentThread();
 
  private:
@@ -139,21 +158,21 @@ class EventLoop : noncopyable
 
   bool looping_; /* atomic */
   std::atomic<bool> quit_;
-  bool eventHandling_; /* atomic */
+  bool eventHandling_; /* atomic */   // 事件分发
   bool callingPendingFunctors_; /* atomic */
-  int64_t iteration_;
-  const pid_t threadId_;
-  Timestamp pollReturnTime_;
-  std::unique_ptr<Poller> poller_;
-  std::unique_ptr<TimerQueue> timerQueue_;
-  int wakeupFd_;
+  int64_t iteration_;             // 事件循环被调用次数
+  const pid_t threadId_;          // 实例化 EventLoop 对象的线程 tid
+  Timestamp pollReturnTime_;                // poll() 返回时间戳
+  std::unique_ptr<Poller> poller_;          // IO 多路复用对象
+  std::unique_ptr<TimerQueue> timerQueue_;  // 定时器队列
+  int wakeupFd_;          // 事件相关文件描述符（主要用于 EventLoop 唤醒通知）
   // unlike in TimerQueue, which is an internal class,
   // we don't expose Channel to client.
-  std::unique_ptr<Channel> wakeupChannel_;
+  std::unique_ptr<Channel> wakeupChannel_;  // 事件相关 channel
   boost::any context_;
 
   // scratch variables
-  ChannelList activeChannels_;
+  ChannelList activeChannels_;      // 当前被触发事件列表
   Channel* currentActiveChannel_;
 
   mutable MutexLock mutex_;

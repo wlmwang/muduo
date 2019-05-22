@@ -30,16 +30,24 @@ class EventLoop;
 /// This class doesn't own the file descriptor.
 /// The file descriptor could be a socket,
 /// an eventfd, a timerfd, or a signalfd
+//
+// 用于 IO 复用，可被多路选择(poll/epoll)监听选择的对象
+// 该类负责分发当前触发的事件，以调用相应的回调函数
+// 它没有 fd 文件描述符的所有权
 class Channel : noncopyable
 {
  public:
+  // 事件回调原型
   typedef std::function<void()> EventCallback;
   typedef std::function<void(Timestamp)> ReadEventCallback;
 
   Channel(EventLoop* loop, int fd);
   ~Channel();
 
+  // 所有触发事件处理入口函数（由 EventLoop 调用）
   void handleEvent(Timestamp receiveTime);
+
+  // 注册事件回调函数
   void setReadCallback(ReadEventCallback cb)
   { readCallback_ = std::move(cb); }
   void setWriteCallback(EventCallback cb)
@@ -59,11 +67,14 @@ class Channel : noncopyable
   // int revents() const { return revents_; }
   bool isNoneEvent() const { return events_ == kNoneEvent; }
 
+  // 开启/关闭指定事件（可读、可写）或关闭全部事件
   void enableReading() { events_ |= kReadEvent; update(); }
   void disableReading() { events_ &= ~kReadEvent; update(); }
   void enableWriting() { events_ |= kWriteEvent; update(); }
   void disableWriting() { events_ &= ~kWriteEvent; update(); }
   void disableAll() { events_ = kNoneEvent; update(); }
+
+  // 是否开启了指定事件（可读、可写）
   bool isWriting() const { return events_ & kWriteEvent; }
   bool isReading() const { return events_ & kReadEvent; }
 
@@ -83,6 +94,7 @@ class Channel : noncopyable
  private:
   static string eventsToString(int fd, int ev);
 
+  // 更新多路复用 Poller 监听队列
   void update();
   void handleEventWithGuard(Timestamp receiveTime);
 
@@ -90,17 +102,23 @@ class Channel : noncopyable
   static const int kReadEvent;
   static const int kWriteEvent;
 
-  EventLoop* loop_;
-  const int  fd_;
-  int        events_;
+  EventLoop* loop_;   // 所属 IO 线程
+  const int  fd_;     // 文件描述符
+  int        events_; // 关注事件集合（可读、可写..）。由用户设置
+
+  // 当前已触发（收到）事件集合（可读、可写..）。由 Poller 设置
   int        revents_; // it's the received event types of epoll or poll
+  
+  // IO复用类 PollPoller::pollfds_ 的索引值
   int        index_; // used by Poller.
   bool       logHup_;
 
   std::weak_ptr<void> tie_;
   bool tied_;
-  bool eventHandling_;
-  bool addedToLoop_;
+  bool eventHandling_;  // 事件正在分发处理
+  bool addedToLoop_;    // 是否已被注册到 Poller 事件监听队列
+
+  // 用户注册的事件回调
   ReadEventCallback readCallback_;
   EventCallback writeCallback_;
   EventCallback closeCallback_;

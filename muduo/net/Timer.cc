@@ -13,6 +13,7 @@ using namespace muduo::net;
 
 AtomicInt64 Timer::s_numCreated_;
 
+// 更新定时器下一次过期（到期）时间点。加上定时器事件触发频率
 void Timer::restart(Timestamp now)
 {
   if (repeat_)

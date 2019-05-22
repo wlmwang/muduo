@@ -32,7 +32,11 @@ Acceptor::Acceptor(EventLoop* loop, const InetAddress& listenAddr, bool reusepor
   assert(idleFd_ >= 0);
   acceptSocket_.setReuseAddr(true);
   acceptSocket_.setReusePort(reuseport);
+
+  // 绑定监听地址
   acceptSocket_.bindAddress(listenAddr);
+
+  // 设置 listen socket 可读事件回调
   acceptChannel_.setReadCallback(
       std::bind(&Acceptor::handleRead, this));
 }
@@ -44,11 +48,14 @@ Acceptor::~Acceptor()
   ::close(idleFd_);
 }
 
+// 端口 listen，并监听可读事件
 void Acceptor::listen()
 {
   loop_->assertInLoopThread();
   listenning_ = true;
   acceptSocket_.listen();
+
+  // 注册可读事件到 poller 中
   acceptChannel_.enableReading();
 }
 
@@ -68,6 +75,7 @@ void Acceptor::handleRead()
     }
     else
     {
+      // 未注册新连接回调，则立即断开客户端
       sockets::close(connfd);
     }
   }
@@ -79,6 +87,15 @@ void Acceptor::handleRead()
     // By Marc Lehmann, author of libev.
     if (errno == EMFILE)
     {
+      // 关闭预留的空闲 fd，腾出空闲描述符来接受新的客户端连接，然后立即关闭。
+      // 防止 fd 达到系统最大限制的 max open files，从而造成 poller busy-loop
+      //
+      // 如果有多个 Acceptor 线程，严格讲，此处是有竞争条件的
+      //  1.因为释放的描述符，可能被其他线程给截获了
+      //  2.不过，本框架正常情况下，只有主线进行 accept 新连接。问题不大！
+      // 更好的做法是采用 soft-limit/hard-limit 机制
+      //  1.将超过 soft-limit 限制的连接关闭
+      //  2.本质上，其实就是改成预留一批空闲的描述符而已
       ::close(idleFd_);
       idleFd_ = ::accept(acceptSocket_.fd(), NULL, NULL);
       ::close(idleFd_);

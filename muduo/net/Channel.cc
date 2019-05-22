@@ -50,6 +50,7 @@ void Channel::tie(const std::shared_ptr<void>& obj)
   tied_ = true;
 }
 
+// 更新多路复用 Poller 监听队列
 void Channel::update()
 {
   addedToLoop_ = true;
@@ -63,8 +64,10 @@ void Channel::remove()
   loop_->removeChannel(this);
 }
 
+// 所有触发事件处理入口函数（由 EventLoop 调用）
 void Channel::handleEvent(Timestamp receiveTime)
 {
+  // todo???
   std::shared_ptr<void> guard;
   if (tied_)
   {
@@ -82,8 +85,13 @@ void Channel::handleEvent(Timestamp receiveTime)
 
 void Channel::handleEventWithGuard(Timestamp receiveTime)
 {
+  // 事件正在分发处理
   eventHandling_ = true;
   LOG_TRACE << reventsToString();
+
+  // todo
+
+  // socket 文件描述符被挂起（写入时触发，很可能是本地可写通道已关闭）
   if ((revents_ & POLLHUP) && !(revents_ & POLLIN))
   {
     if (logHup_)
@@ -93,19 +101,25 @@ void Channel::handleEventWithGuard(Timestamp receiveTime)
     if (closeCallback_) closeCallback_();
   }
 
+  // 表示 socket 文件描述符非法
   if (revents_ & POLLNVAL)
   {
     LOG_WARN << "fd = " << fd_ << " Channel::handle_event() POLLNVAL";
   }
 
+  // 文件描述符发生错误：文件描述符非法
   if (revents_ & (POLLERR | POLLNVAL))
   {
     if (errorCallback_) errorCallback_();
   }
+
+  // 普通或高优先级带数据可读
   if (revents_ & (POLLIN | POLLPRI | POLLRDHUP))
   {
     if (readCallback_) readCallback_(receiveTime);
   }
+
+  // 普通数据可写
   if (revents_ & POLLOUT)
   {
     if (writeCallback_) writeCallback_();

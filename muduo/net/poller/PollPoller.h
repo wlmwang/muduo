@@ -32,6 +32,7 @@ class PollPoller : public Poller
   PollPoller(EventLoop* loop);
   ~PollPoller() override;
 
+  // 超时阻塞获取触发事件列表
   Timestamp poll(int timeoutMs, ChannelList* activeChannels) override;
   void updateChannel(Channel* channel) override;
   void removeChannel(Channel* channel) override;
@@ -40,6 +41,7 @@ class PollPoller : public Poller
   void fillActiveChannels(int numEvents,
                           ChannelList* activeChannels) const;
 
+  // 监听队列
   typedef std::vector<struct pollfd> PollFdList;
   PollFdList pollfds_;
 };

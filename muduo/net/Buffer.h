@@ -39,11 +39,13 @@ namespace net
 /// |                   |                  |                  |
 /// 0      <=      readerIndex   <=   writerIndex    <=     size
 /// @endcode
+//
+// 无界接收、发送缓冲区
 class Buffer : public muduo::copyable
 {
  public:
-  static const size_t kCheapPrepend = 8;
-  static const size_t kInitialSize = 1024;
+  static const size_t kCheapPrepend = 8;    // 保留头（方便先写消息，再附加头部信息）
+  static const size_t kInitialSize = 1024;  // 初始化 1k + 8byte
 
   explicit Buffer(size_t initialSize = kInitialSize)
     : buffer_(kCheapPrepend + initialSize),
@@ -65,18 +67,23 @@ class Buffer : public muduo::copyable
     std::swap(writerIndex_, rhs.writerIndex_);
   }
 
+  // 可读（未读）字节流大小
   size_t readableBytes() const
   { return writerIndex_ - readerIndex_; }
 
+  // 可写（剩余）缓冲区大小
   size_t writableBytes() const
   { return buffer_.size() - writerIndex_; }
 
+  // 已读（保留头+已读）字节流缓冲区偏移量
   size_t prependableBytes() const
   { return readerIndex_; }
 
+  // 已读字节流缓冲区地址（下一次读取字节流开始地址）
   const char* peek() const
   { return begin() + readerIndex_; }
 
+  // 在可读（未读）字节流中查找 "\r\n"。返回找到的地址值，没有返回 NULL
   const char* findCRLF() const
   {
     // FIXME: replace with memmem()?
@@ -84,6 +91,7 @@ class Buffer : public muduo::copyable
     return crlf == beginWrite() ? NULL : crlf;
   }
 
+  // 在可读（未读）字节流中查找 "\r\n"。可指定开始地址（必须在可读字节流范围内）
   const char* findCRLF(const char* start) const
   {
     assert(peek() <= start);
@@ -93,12 +101,14 @@ class Buffer : public muduo::copyable
     return crlf == beginWrite() ? NULL : crlf;
   }
 
+  // 在可读（未读）字节流中查找 '\n'。返回找到的地址值，没有返回 NULL
   const char* findEOL() const
   {
     const void* eol = memchr(peek(), '\n', readableBytes());
     return static_cast<const char*>(eol);
   }
 
+  // 在可读（未读）字节流中查找 '\n'。可指定开始地址（必须在可读字节流范围内）
   const char* findEOL(const char* start) const
   {
     assert(peek() <= start);
@@ -110,6 +120,8 @@ class Buffer : public muduo::copyable
   // retrieve returns void, to prevent
   // string str(retrieve(readableBytes()), readableBytes());
   // the evaluation of two functions are unspecified
+  //
+  // 删除（回收）指定长度缓冲区
   void retrieve(size_t len)
   {
     assert(len <= readableBytes());
@@ -119,10 +131,12 @@ class Buffer : public muduo::copyable
     }
     else
     {
+      // 清空
       retrieveAll();
     }
   }
 
+  // 删除（回收）指定结束地址缓冲区
   void retrieveUntil(const char* end)
   {
     assert(peek() <= end);
@@ -130,37 +144,39 @@ class Buffer : public muduo::copyable
     retrieve(end - peek());
   }
 
+  // 删除（回收）指定类型长度缓冲区
+
   void retrieveInt64()
   {
     retrieve(sizeof(int64_t));
   }
-
   void retrieveInt32()
   {
     retrieve(sizeof(int32_t));
   }
-
   void retrieveInt16()
   {
     retrieve(sizeof(int16_t));
   }
-
   void retrieveInt8()
   {
     retrieve(sizeof(int8_t));
   }
 
+  // 删除（清空）所有缓冲区
   void retrieveAll()
   {
     readerIndex_ = kCheapPrepend;
     writerIndex_ = kCheapPrepend;
   }
 
+  // 返回缓冲区所有字节流字符串 string，并清空缓冲区
   string retrieveAllAsString()
   {
     return retrieveAsString(readableBytes());
   }
 
+  // 返回缓冲区指定长度字节流字符串 string，并删除（回收）该长度的缓冲区
   string retrieveAsString(size_t len)
   {
     assert(len <= readableBytes());
@@ -168,21 +184,30 @@ class Buffer : public muduo::copyable
     retrieve(len);
     return result;
   }
-
+  
+  // 返回缓冲区所有字节流字符串切片 StringPiece
+  // 使用者需确保底层缓冲区的生命周期、线程安全
   StringPiece toStringPiece() const
   {
     return StringPiece(peek(), static_cast<int>(readableBytes()));
   }
 
+  // 新增、写入字符串切片到缓冲区
   void append(const StringPiece& str)
   {
     append(str.data(), str.size());
   }
 
+  // 新增、写入字节流到缓冲区
   void append(const char* /*restrict*/ data, size_t len)
   {
+    // 确保缓冲区可写入指定长度字节流
     ensureWritableBytes(len);
+
+    // 拷贝字节流到缓冲区
     std::copy(data, data+len, beginWrite());
+
+    // 更新已写入偏移
     hasWritten(len);
   }
 
@@ -191,32 +216,40 @@ class Buffer : public muduo::copyable
     append(static_cast<const char*>(data), len);
   }
 
+  // 确保缓冲区可写入指定长度字节流
   void ensureWritableBytes(size_t len)
   {
     if (writableBytes() < len)
     {
+      // 新增分配指定长度的内存空间
       makeSpace(len);
     }
     assert(writableBytes() >= len);
   }
 
+  // 已写入节流缓冲区地址（下一次写入字节流开始地址）
   char* beginWrite()
   { return begin() + writerIndex_; }
 
   const char* beginWrite() const
   { return begin() + writerIndex_; }
 
+  // 更新已写入偏移量
   void hasWritten(size_t len)
   {
     assert(len <= writableBytes());
     writerIndex_ += len;
   }
 
+  // 删除指定长度的写入的字节流
   void unwrite(size_t len)
   {
     assert(len <= readableBytes());
     writerIndex_ -= len;
   }
+
+
+  // 新增、写入指定类型的整型值到缓冲区中（内部变换网络序）
 
   ///
   /// Append int64_t using network endian
@@ -246,6 +279,12 @@ class Buffer : public muduo::copyable
   {
     append(&x, sizeof x);
   }
+
+
+  // 从缓冲区中读取指定类型的整型值（内部变换主机序）
+  //
+  // todo
+  // 对于强制要求类型内存对齐CPU架构中，以下接口可能有 bug
 
   ///
   /// Read int64_t from network endian
@@ -322,6 +361,9 @@ class Buffer : public muduo::copyable
     return x;
   }
 
+  
+  // 插入指定类型的整型值到缓冲区的头部（内部变换网络序）
+
   ///
   /// Prepend int64_t using network endian
   ///
@@ -359,6 +401,7 @@ class Buffer : public muduo::copyable
     std::copy(d, d+len, begin()+readerIndex_);
   }
 
+  // 收缩缓冲区内存为：实际字节流长度 + reserve
   void shrink(size_t reserve)
   {
     // FIXME: use vector::shrink_to_fit() in C++ 11 if possible.
@@ -366,8 +409,11 @@ class Buffer : public muduo::copyable
     other.ensureWritableBytes(readableBytes()+reserve);
     other.append(toStringPiece());
     swap(other);
+
+    // other 生命周期结束，即释放 swap 过来的缓冲区内存
   }
 
+  // 缓冲区容量
   size_t internalCapacity() const
   {
     return buffer_.capacity();
@@ -377,31 +423,45 @@ class Buffer : public muduo::copyable
   ///
   /// It may implement with readv(2)
   /// @return result of read(2), @c errno is saved
+  //
+  // 从文件描述符 fd 中，读取内容到当前缓冲区中
   ssize_t readFd(int fd, int* savedErrno);
 
  private:
 
+  // 缓冲区开始地址
   char* begin()
   { return &*buffer_.begin(); }
 
   const char* begin() const
   { return &*buffer_.begin(); }
 
+  // 新增、分配指定长度的内存空间
   void makeSpace(size_t len)
   {
     if (writableBytes() + prependableBytes() < len + kCheapPrepend)
     {
+      // 重新分配一个更大的缓冲区内存
+      // 此操作可能会使迭代器失效。缓冲区内部使用了偏移量，问题不大
+
       // FIXME: move readable data
       buffer_.resize(writerIndex_+len);
     }
     else
     {
+      // 回收已被读取的字节流内存空间
+
       // move readable data to the front, make space inside buffer
       assert(kCheapPrepend < readerIndex_);
+
+      // 未读（剩余）字节流长度
       size_t readable = readableBytes();
+
+      // 拷贝（移动）字节流到缓冲区开始地址
       std::copy(begin()+readerIndex_,
                 begin()+writerIndex_,
                 begin()+kCheapPrepend);
+
       readerIndex_ = kCheapPrepend;
       writerIndex_ = readerIndex_ + readable;
       assert(readable == readableBytes());
@@ -409,11 +469,13 @@ class Buffer : public muduo::copyable
   }
 
  private:
-  std::vector<char> buffer_;
-  size_t readerIndex_;
-  size_t writerIndex_;
+  std::vector<char> buffer_;  // 缓冲区
 
-  static const char kCRLF[];
+  // 相比迭代器，buffer_ 重新分配内存，偏移不会失效
+  size_t readerIndex_;  // 已读取消息缓冲区偏移
+  size_t writerIndex_;  // 已写入消息缓冲区偏移
+
+  static const char kCRLF[];  // "\r\n"
 };
 
 }  // namespace net

@@ -28,9 +28,12 @@ class Channel;
 /// Base class for IO Multiplexing
 ///
 /// This class doesn't own the Channel objects.
+//
+// IO 多路复用抽象基类。它没有 channel 所有权
 class Poller : noncopyable
 {
  public:
+  // poller 监听 channel 队列
   typedef std::vector<Channel*> ChannelList;
 
   Poller(EventLoop* loop);
@@ -48,10 +51,12 @@ class Poller : noncopyable
   /// Must be called in the loop thread.
   virtual void removeChannel(Channel* channel) = 0;
 
+  // 是否在监听队列
   virtual bool hasChannel(Channel* channel) const;
 
   static Poller* newDefaultPoller(EventLoop* loop);
 
+  // 调用线程必须与 EventLoop 在同一个线程（检测 Poller 只能属于一个 IO 线程）
   void assertInLoopThread() const
   {
     ownerLoop_->assertInLoopThread();
@@ -59,10 +64,10 @@ class Poller : noncopyable
 
  protected:
   typedef std::map<int, Channel*> ChannelMap;
-  ChannelMap channels_;
+  ChannelMap channels_;   // 当前已加入 poller 中的 channel 字典。map<fd, Channel*>
 
  private:
-  EventLoop* ownerLoop_;
+  EventLoop* ownerLoop_;  // 所属 IO 线程
 };
 
 }  // namespace net

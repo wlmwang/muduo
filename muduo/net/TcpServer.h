@@ -33,7 +33,10 @@ class EventLoopThreadPool;
 class TcpServer : noncopyable
 {
  public:
+  // 线程池初始化回调函数原型
   typedef std::function<void(EventLoop*)> ThreadInitCallback;
+
+  // 是否开启端口重用（默认不开启）
   enum Option
   {
     kNoReusePort,
@@ -72,6 +75,8 @@ class TcpServer : noncopyable
   ///
   /// It's harmless to call it multiple times.
   /// Thread safe.
+  //
+  // 启动开启监听服务器（线程安全）
   void start();
 
   /// Set connection callback.
@@ -91,6 +96,8 @@ class TcpServer : noncopyable
 
  private:
   /// Not thread safe, but in loop
+  //
+  // acceptor 新连接的事件回调
   void newConnection(int sockfd, const InetAddress& peerAddr);
   /// Thread safe.
   void removeConnection(const TcpConnectionPtr& conn);
@@ -99,18 +106,25 @@ class TcpServer : noncopyable
 
   typedef std::map<string, TcpConnectionPtr> ConnectionMap;
 
-  EventLoop* loop_;  // the acceptor loop
-  const string ipPort_;
-  const string name_;
-  std::unique_ptr<Acceptor> acceptor_; // avoid revealing Acceptor
-  std::shared_ptr<EventLoopThreadPool> threadPool_;
+  EventLoop* loop_;       // the acceptor loop  // 所属 IO 线程（acceptor 事件循环）
+  const string ipPort_;   // 监听socket 的 ip:port
+  const string name_;     // 服务名称 && 线程池前缀名称
+  std::unique_ptr<Acceptor> acceptor_; // avoid revealing Acceptor  // TCP 连接接受器
+
+  std::shared_ptr<EventLoopThreadPool> threadPool_; // EventLoop IO 线程池
+
+  // EventLoop 注册的事件回调函数（用户函数）
   ConnectionCallback connectionCallback_;
   MessageCallback messageCallback_;
   WriteCompleteCallback writeCompleteCallback_;
   ThreadInitCallback threadInitCallback_;
-  AtomicInt32 started_;
+  
+  AtomicInt32 started_;     // 服务是否启动
   // always in loop thread
-  int nextConnId_;
+  int nextConnId_;  // 当前 IO 线程客户端连接的唯一 ID
+
+  // 所有客户端连接字典。map<sequence, TcpConnectionPtr>
+  // TcpServer 持有所有客户端连接 TcpConnection 的生命周期
   ConnectionMap connections_;
 };
 

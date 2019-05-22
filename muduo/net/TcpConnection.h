@@ -38,6 +38,8 @@ class Socket;
 /// TCP connection, for both client and server usage.
 ///
 /// This is an interface class, so don't expose too much details.
+//
+// 一个 TcpConnection 对象对应一个客户端连接
 class TcpConnection : noncopyable,
                       public std::enable_shared_from_this<TcpConnection>
 {
@@ -115,7 +117,7 @@ class TcpConnection : noncopyable,
   void connectDestroyed();  // should be called only once
 
  private:
-  enum StateE { kDisconnected, kConnecting, kConnected, kDisconnecting };
+  enum StateE { kDisconnected/**已关闭*/, kConnecting/**正在连接*/, kConnected/**已连接*/, kDisconnecting/**正在关闭*/ };
   void handleRead(Timestamp receiveTime);
   void handleWrite();
   void handleClose();
@@ -145,9 +147,9 @@ class TcpConnection : noncopyable,
   WriteCompleteCallback writeCompleteCallback_;
   HighWaterMarkCallback highWaterMarkCallback_;
   CloseCallback closeCallback_;
-  size_t highWaterMark_;
-  Buffer inputBuffer_;
-  Buffer outputBuffer_; // FIXME: use list<Buffer> as output buffer.
+  size_t highWaterMark_;    // 发送缓冲区高水位阈值。默认 64M 高水位
+  Buffer inputBuffer_;  // 接收缓冲区
+  Buffer outputBuffer_; // FIXME: use list<Buffer> as output buffer.  // 发送缓冲区
   boost::any context_;
   // FIXME: creationTime_, lastReceiveTime_
   //        bytesReceived_, bytesSent_

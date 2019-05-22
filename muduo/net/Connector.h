@@ -44,7 +44,7 @@ class Connector : noncopyable,
   const InetAddress& serverAddress() const { return serverAddr_; }
 
  private:
-  enum States { kDisconnected, kConnecting, kConnected };
+  enum States { kDisconnected/**已关闭*/, kConnecting/**正在连接*/, kConnected/**已连接*/ };
   static const int kMaxRetryDelayMs = 30*1000;
   static const int kInitRetryDelayMs = 500;
 
