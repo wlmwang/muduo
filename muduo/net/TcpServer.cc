@@ -129,7 +129,8 @@ void TcpServer::removeConnectionInLoop(const TcpConnectionPtr& conn)
            << "] - connection " << conn->name();
   
   // 移除客户端连接池字典。注：在 connectDestroyed 调用后会彻底释
-  // 放 TcpConnection 内存（调用 removeConnection 前做了备份）
+  // 放 TcpConnection 内存
+  // 调用 removeConnection 前做了备份。所以此处 conn 不会被释放
   size_t n = connections_.erase(conn->name());
   (void)n;
   assert(n == 1);

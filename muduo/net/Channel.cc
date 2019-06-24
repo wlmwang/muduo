@@ -67,7 +67,8 @@ void Channel::remove()
 // 所有触发事件处理入口函数（由 EventLoop 调用）
 void Channel::handleEvent(Timestamp receiveTime)
 {
-  // todo???
+  // 持有形如 TcpConnection 客户端对象的弱引用
+  // 解决 TcpConnection 使用 this 绑定的回掉函数，但生命周期模糊的问题
   std::shared_ptr<void> guard;
   if (tied_)
   {
@@ -88,8 +89,6 @@ void Channel::handleEventWithGuard(Timestamp receiveTime)
   // 事件正在分发处理
   eventHandling_ = true;
   LOG_TRACE << reventsToString();
-
-  // todo
 
   // socket 文件描述符被挂起（写入时触发，很可能是本地可写通道已关闭）
   if ((revents_ & POLLHUP) && !(revents_ & POLLIN))

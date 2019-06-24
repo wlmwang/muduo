@@ -53,8 +53,9 @@ TcpConnection::TcpConnection(EventLoop* loop,
     peerAddr_(peerAddr),
     highWaterMark_(64*1024*1024)
 {
-  // todo
-  // shared_from_this() ???
+  // 不能使用 shared_from_this() ，否则会与 channel_ 形成循环引用，
+  // 导致内存泄露，因为 channel 生命周期是由 TcpConnection 管理的。
+  // 正因如此，channel::tie_ 弱引用的存在就是为了解决模糊的生命周期问题
   channel_->setReadCallback(
       std::bind(&TcpConnection::handleRead, this, _1));
   channel_->setWriteCallback(
